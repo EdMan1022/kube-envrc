@@ -1,5 +1,7 @@
 import click
 
+from kube_envrc.utils import yaml_utils, kubectl_utils, general_utils
+
 @click.group()
 def cli():
     pass
@@ -18,13 +20,28 @@ def update_envrc(kube_config, envrc):
     """
 
     # parse deployment yaml
+    manifest_yaml = yaml_utils.load_manifest(kube_config)
+    namespace = manifest_yaml['metadata']['namespace']
 
-    # find all environment variables loaded from secrets,
+    # find all environment variables loaded from manifest,
     # append them to a dictionary to be filled out
+    env_vars = yaml_utils.find_env_vars(manifest_yaml)
+    print(env_vars)
 
     # figure out all secrets to be pulled from the namespace
+    secrets_to_get = yaml_utils.secret_list(env_vars)
+    print(secrets_to_get)
 
     # pull secrets from kubernetes
+    secret_map = kubectl_utils.pull_secrets_from_kube_client(secrets_to_get, namespace=namespace)
+
+    # fill out remaining values from secrets
+    for env_var in env_vars:
+        if env_var.secret:
+            env_var.value = secret_map[env_var.secret.kube_secret][env_var.secret.secret_key]
+
+    with open(envrc, 'w') as envrc_fo:
+        general_utils.dump_to_envrc_file(env_vars, envrc_fo)
 
     click.echo("Finished")
 
